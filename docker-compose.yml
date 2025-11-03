@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: summarizer
+    ports:
+      - "5432:5432"   # change left side to 5433 if 5432 is busy
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+volumes:
+  dbdata:
