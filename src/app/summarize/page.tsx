@@ -40,8 +40,25 @@ export default function SummarizePage() {
   }, [handleSummarize]);
 
   const handleConfirmSave = useCallback(async () => {
-    alert("Save will be enabled in the next step.");
-  }, []);
+    if (!summary) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/save-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ originalText: text, summary }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || "Failed to save");
+      alert(`Saved! id=${data.id}`);
+    } catch (e: any) {
+      setError(e.message ?? "Unexpected error");
+    } finally {
+      setLoading(false);
+    }
+  }, [text, summary]);
+  
 
   const handleClear = useCallback(() => {
     setText("");
