@@ -1,188 +1,172 @@
-import Link from "next/link";
-
+// app/history/page.tsx
 import { CopyButton } from "@/components/CopyButton";
-import { LocalHistoryFallback } from "@/components/LocalHistoryFallback";
-import { prisma } from "@/server/prisma";
+import { prisma } from "@/server/prisma"; // your Prisma singleton
+import Link from "next/link";
+ // if you don't have this, remove this line + its usage below
 
-type SearchParams = Record<string, string | string[] | undefined>;
+export const dynamic = "force-dynamic";
 
-type HistoryPageProps = {
-  searchParams?: SearchParams;
+type PageProps = {
+  searchParams?: {
+    q?: string;
+    take?: string;
+    cursor?: string; // id of the last item from previous page
+  };
 };
 
-const DEFAULT_TAKE = 10;
-const MAX_TAKE = 50;
+const TAKE_DEFAULT = 10;
 
-function getParam(value: string | string[] | undefined): string | undefined {
-  if (Array.isArray(value)) return value[0];
-  return value;
-}
-
-function buildSearchForm({
-  q,
-  limit,
-}: {
-  q?: string;
-  limit: number;
-}) {
-  return (
-    <form method="GET" className="flex gap-3">
-      <label htmlFor="history-search" className="sr-only">
-        Search summaries
-      </label>
-      <input
-        id="history-search"
-        name="q"
-        defaultValue={q ?? ""}
-        placeholder="Search summaries..."
-        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-      />
-      <input type="hidden" name="take" value={limit} />
-      <button
-        type="submit"
-        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-      >
-        Search
-      </button>
-    </form>
+export default async function HistoryPage({ searchParams }: PageProps) {
+  const q = (searchParams?.q ?? "").trim();
+  const take = Math.min(
+    50,
+    Math.max(
+      1,
+      Number.isFinite(Number(searchParams?.take))
+        ? Number(searchParams?.take)
+        : TAKE_DEFAULT
+    )
   );
-}
+  const cursor = searchParams?.cursor || undefined;
 
-export default async function HistoryPage({ searchParams }: HistoryPageProps) {
-  const q = getParam(searchParams?.q);
-  const cursor = getParam(searchParams?.cursor);
-  const takeParam = getParam(searchParams?.take);
+  // Build where clause for optional search
+  const where =
+    q.length > 0
+      ? {
+          OR: [
+            { summary: { contains: q, mode: "insensitive" as const } },
+            { originalText: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : undefined;
 
-  const parsedTake = Number.parseInt(takeParam ?? "", 10);
-  const limit = Number.isNaN(parsedTake)
-    ? DEFAULT_TAKE
-    : Math.min(Math.max(parsedTake, 1), MAX_TAKE);
-
-  const where = q
-    ? {
-        OR: [
-          {
-            summary: {
-              contains: q,
-              mode: "insensitive" as const,
-            },
-          },
-          {
-            originalText: {
-              contains: q,
-              mode: "insensitive" as const,
-            },
-          },
-        ],
-      }
-    : undefined;
-
-  const queryArgs = {
+  // Fetch one extra to detect "hasNext"
+  let results = await prisma.summary.findMany({
     where,
-    orderBy: { createdAt: "desc" as const },
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-  };
-
-  let items:
-    | Awaited<ReturnType<typeof prisma.summary.findMany>>
-    | undefined;
-  let nextCursor: string | null = null;
-  let dbError = false;
-
-  try {
-    const results = await prisma.summary.findMany(queryArgs);
-    items = results.slice(0, limit);
-    nextCursor = results.length > limit ? results[limit].id : null;
-  } catch (error) {
-    console.error("Failed to load history from database", error);
-    dbError = true;
-  }
-
-  const formatter = new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
+    take: take + 1,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    orderBy: { createdAt: "desc" }, // stable enough for this app
+    select: { id: true, originalText: true, summary: true, createdAt: true },
   });
 
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  params.set("take", String(limit));
+  const hasNext = results.length > take;
+  if (hasNext) results = results.slice(0, take);
+  const nextCursor = hasNext ? results[results.length - 1]?.id : undefined;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">History</h1>
-        <p className="text-sm text-gray-600">
+    <div className="mx-auto max-w-6xl p-6">
+      <header className="mb-4 space-y-1">
+        <h1 className="text-3xl font-bold text-foreground">
+          History
+        </h1>
+        <p className="text-sm text-(--ink)/70">
           Search and browse summaries saved to the database.
         </p>
       </header>
 
-      {buildSearchForm({ q, limit })}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_420px]">
+        {/* LEFT: search + results */}
+        <section className="space-y-4">
+          {/* Search */}
+          <form
+            action="/history"
+            className="rounded-2xl border border-[var(--brand)/15] bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                name="q"
+                defaultValue={q}
+                placeholder="Search summaries…"
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-ink"
+              />
+              {/* Preserve page size */}
+              <input type="hidden" name="take" value={take} />
+              <button
+                className="rounded-lg bg-[#9A2839] px-4 py-2 text-sm font-medium text-white hover:bg-[#7f2230]"
+                type="submit"
+              >
+                Search
+              </button>
+            </div>
+          </form>
 
-      {dbError ? (
-        <LocalHistoryFallback query={q} />
-      ) : (
-        <>
-          <section className="space-y-4">
-            {!items || items.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                {q
-                  ? "No summaries match your search."
-                  : "No summaries found yet."}
-              </p>
-            ) : (
-              <ul className="space-y-4">
-                {items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>{formatter.format(item.createdAt)}</span>
-                      <span className="font-mono text-[11px] text-gray-400">
-                        {item.id}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          Summary
-                        </p>
-                        <p className="mt-1 text-sm text-gray-700">
-                          {item.summary}
-                        </p>
-                      </div>
-                      <CopyButton
-                        text={item.summary}
-                        className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-                      />
-                    </div>
-                    <p className="mt-3 text-sm font-medium text-gray-900">
-                      Original
-                    </p>
-                    <p className="mt-1 text-sm text-gray-700">
-                      {item.originalText}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {/* Results */}
+          {results.length === 0 ? (
+            <p className="text-sm text-(--ink)/60">
+              No summaries found.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {results.map((s) => (
+                <article
+                  key={s.id}
+                  className="rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <time className="text-xs text-(--ink)/60">
+                      {new Date(s.createdAt).toLocaleString()}
+                    </time>
+                    {/* Remove this <CopyButton> if you didn't add it earlier */}
+                    <CopyButton text={s.summary} />
+                  </div>
 
-          {nextCursor && (
-            <Link
-              href={`/history?${(() => {
-                const nextParams = new URLSearchParams(params);
-                nextParams.set("cursor", nextCursor as string);
-                return nextParams.toString();
-              })()}`}
-              className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-            >
-              Next
-            </Link>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Summary
+                  </h3>
+                  <p className="mt-1 max-w-prose leading-7 text-ink">
+                    {s.summary}
+                  </p>
+
+                  <h4 className="mt-4 text-sm font-semibold text-foreground">
+                    Original
+                  </h4>
+                  <p className="mt-1 leading-7 text-ink">
+                    {s.originalText}
+                  </p>
+
+                  <div className="mt-3 text-[11px] text-(--ink)/60">
+                    id: {s.id}
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
-        </>
-      )}
+
+          {/* Pagination (Next) */}
+          <div className="flex items-center justify-end">
+            {hasNext && nextCursor && (
+              <Link
+                className="rounded-lg border px-3 py-1.5 text-sm text-foreground hover:bg-[var(--brand)/10]"
+                href={{
+                  pathname: "/history",
+                  query: {
+                    q,
+                    take,
+                    cursor: nextCursor,
+                  },
+                }}
+              >
+                Next →
+              </Link>
+            )}
+          </div>
+        </section>
+
+        {/* RIGHT: sticky aside */}
+        <aside className="space-y-4 md:sticky md:top-20 h-fit">
+          <section className="rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm">
+            <h3 className="font-medium text-foreground">
+              About
+            </h3>
+            <p className="mt-1 text-sm text-(--ink)/75">
+              This page lists summaries saved to the database. Use the search
+              box to filter by content. Click “Next” to fetch more results. Use
+              the Copy button to quickly copy any summary.
+            </p>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }

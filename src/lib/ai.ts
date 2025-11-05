@@ -33,7 +33,7 @@ export async function summarizeText(text: string): Promise<string> {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: `Summarize the following text in 2-3 sentences:\n\n${text}`,
+        input: `Provide a clear and coherent summary of the following text:\n\n${text}`,
       }),
     });
 
@@ -43,13 +43,15 @@ export async function summarizeText(text: string): Promise<string> {
 
     const json = (await res.json()) as OpenAIResponse;
 
-    const directText = typeof (json as any)?.output_text === "string"
-      ? (json as any).output_text
-      : undefined;
+    const directText =
+      typeof (json as any)?.output_text === "string"
+        ? (json as any).output_text
+        : undefined;
 
-    const choiceText = json && "choices" in json
-      ? json.choices?.[0]?.message?.content
-      : undefined;
+    const choiceText =
+      json && "choices" in json
+        ? json.choices?.[0]?.message?.content
+        : undefined;
 
     const responseText = directText || choiceText;
 

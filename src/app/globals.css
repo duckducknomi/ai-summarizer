@@ -1,34 +1,106 @@
 @import "tailwindcss";
 
-/* --- Light theme default --- */
+/* ===== THEME VARIABLES ===== */
 :root {
-  --background: #f9fafb;  /* tailwind gray-50 */
-  --foreground: #111827;  /* tailwind gray-900 */
+  --background: #E6F9F6;   /* page background (mint) */
+  --foreground: #0C312B;   /* base text (deep teal) */
+  --brand: #9A2839;        /* accent / primary (cranberry) */
+  --ink: #000000;          /* pure black for body text */
 }
 
-/* Keep theme tokens available for Tailwind’s @theme if you’re using it */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-ink: var(--ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* IMPORTANT: disable auto dark mode for now (we’ll add a toggle later) */
-/* Remove the prefers-color-scheme: dark block entirely */
-
-/* Global body styles */
+/* ===== GLOBAL BASE STYLES ===== */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Nice default focus ring for interactive elements */
+/* Links and inline text elements */
+a {
+  color: var(--brand);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a:hover {
+  text-decoration: underline;
+  color: color-mix(in srgb, var(--brand) 90%, black);
+}
+
+/* ===== INTERACTION & ACCESSIBILITY ===== */
+
+/* Remove default outline but ensure strong custom focus */
 :where(button, a, input, textarea, select) {
   outline: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
+
 :where(button, a, input, textarea, select):focus-visible {
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4); /* indigo-500/40 */
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 40%, transparent);
   border-radius: 0.5rem;
 }
+
+/* Improve disabled states */
+:where(button, input, select, textarea):disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== CARD & FORM DEFAULTS ===== */
+.card {
+  background: white;
+  border: 1px solid color-mix(in srgb, var(--brand) 15%, transparent);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+textarea,
+input {
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  color: var(--ink);
+  width: 100%;
+  resize: vertical;
+}
+textarea::placeholder,
+input::placeholder {
+  color: color-mix(in srgb, var(--ink) 50%, white);
+}
+
+/* Buttons — neutral and primary */
+button {
+  cursor: pointer;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+button.primary {
+  background: var(--brand);
+  color: white;
+}
+button.primary:hover {
+  opacity: 0.9;
+}
+
+/* Optional dark mode placeholder (not active yet)
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0C312B;
+    --foreground: #E6F9F6;
+  }
+}
+*/

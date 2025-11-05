@@ -1,10 +1,7 @@
+import Header from "@/components/Header";
 import "./globals.css";
-import type { Metadata } from "next";
+import { ToastProvider } from "@/components/Toast";
 
-export const metadata: Metadata = {
-  title: "AI Summarizer",
-  description: "Summarize any text quickly with AI",
-};
 
 export default function RootLayout({
   children,
@@ -13,7 +10,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <ToastProvider>
+          <Header />
+          <main className="mx-auto max-w-6xl p-6">{children}</main>
+        </ToastProvider>
+      </body>
     </html>
   );
 }

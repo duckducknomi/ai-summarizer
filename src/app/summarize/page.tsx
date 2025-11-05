@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-
+import { useToast } from "@/components/Toast";
 import {
   add,
   attachId,
@@ -9,6 +9,7 @@ import {
   load,
   type LocalSummary,
 } from "@/lib/localHistory";
+import { useAutosizeTextArea } from "@/lib/useAutosize";
 
 type ApiOk = { summary: string };
 type ApiErr = { error?: { code?: string; message?: string } };
@@ -27,19 +28,20 @@ export default function SummarizePage() {
 
   const lastCreatedAtRef = useRef<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { success, error: toastError } = useToast();
 
   const minLen = 20;
   const canSubmit = !loading && text.trim().length >= minLen;
 
   useEffect(() => {
     setRecent(load());
-
     return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
+
+  useAutosizeTextArea(textareaRef.current, text);
 
   const handleSummarize = useCallback(async () => {
     setLoading(true);
@@ -55,10 +57,8 @@ export default function SummarizePage() {
         body: JSON.stringify({ text }),
       });
       const data: ApiOk & ApiErr = await res.json();
-
-      if (!res.ok) {
+      if (!res.ok)
         throw new Error(data?.error?.message || "Failed to summarize");
-      }
 
       const summaryText = (data as ApiOk).summary;
       const createdAt = new Date().toISOString();
@@ -68,7 +68,9 @@ export default function SummarizePage() {
       lastCreatedAtRef.current = createdAt;
       setRecent(load());
     } catch (e: any) {
-      setError(e?.message ?? "Unexpected error");
+      const message = e?.message ?? "Unexpected error";
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
       setActiveAction(null);
@@ -77,12 +79,11 @@ export default function SummarizePage() {
 
   const handleRetry = useCallback(() => {
     setCopied(false);
-    handleSummarize();
+    void handleSummarize();
   }, [handleSummarize]);
 
   const handleConfirmSave = useCallback(async () => {
     if (!summary) return;
-
     setLoading(true);
     setActiveAction("save");
     setError(null);
@@ -96,7 +97,6 @@ export default function SummarizePage() {
       const payload: (ApiErr & Partial<SaveOk>) | undefined = await res
         .json()
         .catch(() => undefined);
-
       if (!res.ok) {
         throw new Error(
           payload?.error?.message ||
@@ -112,10 +112,11 @@ export default function SummarizePage() {
         attachId(lastCreatedAtRef.current, id);
         setRecent(load());
       }
-
-      alert("Summary saved!");
+      success("Summary saved!");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to save summary");
+      const message = e?.message ?? "Failed to save summary";
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
       setActiveAction(null);
@@ -132,16 +133,15 @@ export default function SummarizePage() {
 
   const handleCopy = useCallback(async () => {
     if (!summary || !navigator?.clipboard) return;
-
     try {
       await navigator.clipboard.writeText(summary);
       setCopied(true);
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
     } catch (e: any) {
-      setError(e?.message ?? "Unable to copy summary");
+      const message = e?.message ?? "Unable to copy summary";
+      setError(message);
+      toastError(message);
     }
   }, [summary]);
 
@@ -153,138 +153,215 @@ export default function SummarizePage() {
 
   const recentEntries = recent.slice(0, 3);
 
+  const Spinner = () => (
+    <svg
+      className="mr-2 h-4 w-4 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+      />
+    </svg>
+  );
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="space-y-1">
-        <h1 className="text-3xl font-bold text-gray-900">Summarize Text</h1>
-        <p className="text-sm text-gray-600">
-          Paste or type the content you want summarized and we'll generate a
-          concise overview for you.
+        <h1 className="text-3xl font-bold text-foreground">
+          Summarize Text
+        </h1>
+        <p className="text-sm text-(--ink)/70">
+          Paste or type the content you want summarized and we&apos;ll generate
+          a concise overview for you.
         </p>
       </header>
 
-      <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-md">
-        <div className="space-y-2">
-          <label htmlFor="input" className="text-sm font-medium text-gray-700">
-            Source Text
-          </label>
-          <textarea
-            id="input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Enter at least 20 characters..."
-            className="h-48 w-full rounded-xl border border-gray-300 p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-            aria-invalid={Boolean(error)}
-            aria-busy={loading}
-          />
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>{text.trim().length} characters</span>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-xs font-medium text-indigo-600 transition hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={loading || (!text && !summary)}
-            >
-              Clear text
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleSummarize}
-            disabled={!canSubmit}
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {activeAction === "summarize" ? "Summarizing..." : "Summarize"}
-          </button>
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-800 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={loading || !summary}
-          >
-            Retry
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirmSave}
-            className="inline-flex items-center justify-center rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!summary || loading}
-            title="Save this summary to your account"
-          >
-            {activeAction === "save" ? "Saving..." : "Confirm & Save"}
-          </button>
-        </div>
-
-        {error && <div className="text-sm text-red-600">{error}</div>}
-      </div>
-
-      {summary && (
-        <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-6 text-gray-900 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Summary</h2>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="inline-flex items-center justify-center rounded-md bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={copied}
-            >
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
-          <p className="whitespace-pre-wrap text-base leading-relaxed text-gray-700">
-            {summary}
-          </p>
-        </section>
-      )}
-
-      <section className="space-y-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-800">Recent (local)</h2>
-          <button
-            type="button"
-            onClick={handleClearRecent}
-            className="text-xs font-medium text-indigo-600 transition hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={recentEntries.length === 0}
-          >
-            Clear
-          </button>
-        </div>
-
-        {recentEntries.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            Generate a summary to start building your local history.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {recentEntries.map((item) => {
-              const timestamp = new Date(item.createdAt);
-              const formatted = Number.isNaN(timestamp.getTime())
-                ? item.createdAt
-                : timestamp.toLocaleString();
-
-              return (
-                <li
-                  key={`${item.createdAt}-${item.id ?? "local"}`}
-                  className="rounded-lg border border-gray-100 bg-gray-50 p-3"
+      {/* Split view: left editor, right sticky aside */}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_420px]">
+        {/* LEFT: Editor */}
+        <section className="space-y-2">
+          <div className="space-y-4 rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm">
+            <div className="space-y-2">
+              <label
+                htmlFor="input"
+                className="text-sm font-medium text-foreground"
+              >
+                Source Text
+              </label>
+              <textarea
+                id="input"
+                ref={textareaRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Enter at least 20 characters..."
+                className="w-full rounded-xl border border-gray-300 p-3 text-ink"
+                aria-invalid={Boolean(error)}
+                aria-busy={loading}
+              />
+              <div className="flex items-center justify-between text-xs text-(--ink)/60">
+                <span>{text.trim().length} characters</span>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="text-xs font-medium text-brand hover:opacity-90 disabled:opacity-40"
+                  disabled={loading || (!text && !summary)}
                 >
-                  <div className="flex items-center justify-between text-[11px] text-gray-500">
-                    <span>{formatted}</span>
-                    {item.id && (
-                      <span className="font-medium text-green-600">Saved</span>
-                    )}
-                  </div>
-                  <p className="mt-2 text-sm text-gray-700" title={item.summary}>
-                    {item.summary}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                  Clear text
+                </button>
+              </div>
+            </div>
+
+            {/* Buttons row */}
+            <div className="flex flex-wrap gap-2">
+              {/* Summarize (primary) */}
+              <button
+                type="button"
+                onClick={handleSummarize}
+                disabled={!canSubmit}
+                className={[
+                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
+                  "bg-[#9A2839] text-white hover:bg-[#7f2230] focus-visible:ring-[#9A2839]/40",
+                  "disabled:opacity-50 disabled:hover:opacity-50 disabled:cursor-not-allowed",
+                ].join(" ")}
+              >
+                {activeAction === "summarize" ? (
+                  <>
+                    <Spinner />
+                    Summarizing…
+                  </>
+                ) : (
+                  "Summarize"
+                )}
+              </button>
+
+              {/* Retry */}
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={loading || !summary}
+                className={[
+                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
+                  "border border-gray-300 bg-gray-100 text-ink hover:bg-gray-200",
+                  "disabled:opacity-50 disabled:hover:bg-gray-100 disabled:cursor-not-allowed",
+                ].join(" ")}
+              >
+                Retry
+              </button>
+
+              {/* Save */}
+              <button
+                type="button"
+                onClick={handleConfirmSave}
+                disabled={!summary || loading}
+                title="Save this summary to your account"
+                className={[
+                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
+                  "border border-gray-300 bg-white text-ink hover:bg-gray-50",
+                  "disabled:opacity-50 disabled:hover:bg-white disabled:cursor-not-allowed",
+                ].join(" ")}
+              >
+                {activeAction === "save" ? (
+                  <>
+                    <Spinner />
+                    Saving…
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </button>
+            </div>
+
+            {error && <div className="text-sm text-red-600">{error}</div>}
+          </div>
+        </section>
+
+        {/* RIGHT: Sticky aside */}
+        <aside className="space-y-4 md:sticky md:top-20 h-fit">
+          {summary && (
+            <section className="space-y-3 rounded-2xl border border-[var(--brand)/15] bg-white p-6 text-ink shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Summary
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex items-center justify-center rounded-md bg-gray-100 px-3 py-1 text-xs font-medium text-ink transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={copied}
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">
+                {summary}
+              </p>
+            </section>
+          )}
+
+          <section className="space-y-4 rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">
+                Recent (local)
+              </h2>
+              <button
+                type="button"
+                onClick={handleClearRecent}
+                className="text-xs font-medium text-brand hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={recentEntries.length === 0}
+              >
+                Clear
+              </button>
+            </div>
+
+            {recentEntries.length === 0 ? (
+              <p className="text-sm text-(--ink)/60">
+                Generate a summary to start building your local history.
+              </p>
+            ) : (
+              <ul className="max-h-[360px] space-y-2 overflow-auto pr-1">
+                {recentEntries.map((item) => {
+                  const ts = new Date(item.createdAt);
+                  const formatted = Number.isNaN(ts.getTime())
+                    ? item.createdAt
+                    : ts.toLocaleString();
+                  return (
+                    <li
+                      key={`${item.createdAt}-${item.id ?? "local"}`}
+                      className="rounded-xl border border-[var(--brand)/15] bg-gray-50 p-3"
+                    >
+                      <div className="flex items-center justify-between text-[11px] text-(--ink)/60">
+                        <span>{formatted}</span>
+                        {item.id && (
+                          <span className="font-medium text-green-600">
+                            Saved
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className="mt-2 text-sm text-ink"
+                        title={item.summary}
+                      >
+                        {item.summary}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
