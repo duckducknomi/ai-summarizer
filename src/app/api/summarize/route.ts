@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { summarizeText } from "@/lib/ai";
+
 const Body = z.object({
   text: z.string().min(20, "Text must be at least 20 characters"),
 });
-
-function mockSummarize(input: string) {
-  const trimmed = input.trim().replace(/\s+/g, " ");
-  const firstSentence = trimmed.split(/[.!?]\s/)[0];
-  const base =
-    firstSentence.length >= 40 ? firstSentence : trimmed.slice(0, 160);
-  return base.replace(/\s+/g, " ").trim() + (/[.!?]$/.test(base) ? "" : "…");
-}
 
 export async function POST(req: NextRequest) {
   const json = await req.json().catch(() => ({}));
@@ -25,7 +19,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { text } = parsed.data;
-  const summary = mockSummarize(text);
+  const summary = await summarizeText(text);
 
   // Keep the shape simple; we can extend later without breaking clients.
   return NextResponse.json({ summary });
