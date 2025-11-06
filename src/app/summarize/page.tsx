@@ -10,6 +10,9 @@ import {
   type LocalSummary,
 } from "@/lib/localHistory";
 import { useAutosizeTextArea } from "@/lib/useAutosize";
+import { Button } from "@/components/Button";
+import CopyButton from "@/components/CopyButton";
+
 
 type ApiOk = { summary: string };
 type ApiErr = { error?: { code?: string; message?: string } };
@@ -21,18 +24,21 @@ export default function SummarizePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<LocalSummary[]>([]);
-  const [copied, setCopied] = useState(false);
   const [activeAction, setActiveAction] = useState<"summarize" | "save" | null>(
     null
   );
 
   const lastCreatedAtRef = useRef<string | null>(null);
+  const lastSummarizedTextRef = useRef<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const { success, error: toastError } = useToast();
 
   const minLen = 20;
-  const canSubmit = !loading && text.trim().length >= minLen;
+  const canSubmit =
+    !loading &&
+    text.trim().length >= minLen &&
+    text !== lastSummarizedTextRef.current;
 
   useEffect(() => {
     setRecent(load());
@@ -48,7 +54,6 @@ export default function SummarizePage() {
     setActiveAction("summarize");
     setError(null);
     setSummary(null);
-    setCopied(false);
 
     try {
       const res = await fetch("/api/summarize", {
@@ -66,6 +71,7 @@ export default function SummarizePage() {
       setSummary(summaryText);
       add({ originalText: text, summary: summaryText, createdAt });
       lastCreatedAtRef.current = createdAt;
+      lastSummarizedTextRef.current = text;
       setRecent(load());
     } catch (e: any) {
       const message = e?.message ?? "Unexpected error";
@@ -78,7 +84,7 @@ export default function SummarizePage() {
   }, [text]);
 
   const handleRetry = useCallback(() => {
-    setCopied(false);
+
     void handleSummarize();
   }, [handleSummarize]);
 
@@ -127,23 +133,9 @@ export default function SummarizePage() {
     setText("");
     setSummary(null);
     setError(null);
-    setCopied(false);
     lastCreatedAtRef.current = null;
+    lastSummarizedTextRef.current = null;
   }, []);
-
-  const handleCopy = useCallback(async () => {
-    if (!summary || !navigator?.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(summary);
-      setCopied(true);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
-    } catch (e: any) {
-      const message = e?.message ?? "Unable to copy summary";
-      setError(message);
-      toastError(message);
-    }
-  }, [summary]);
 
   const handleClearRecent = useCallback(() => {
     clearHistory();
@@ -153,34 +145,10 @@ export default function SummarizePage() {
 
   const recentEntries = recent.slice(0, 3);
 
-  const Spinner = () => (
-    <svg
-      className="mr-2 h-4 w-4 animate-spin"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
-    </svg>
-  );
-
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="space-y-1">
-        <h1 className="text-3xl font-bold text-foreground">
-          Summarize Text
-        </h1>
+        <h1 className="text-3xl font-bold text-foreground">Summarize Text</h1>
         <p className="text-sm text-(--ink)/70">
           Paste or type the content you want summarized and we&apos;ll generate
           a concise overview for you.
@@ -211,75 +179,45 @@ export default function SummarizePage() {
               />
               <div className="flex items-center justify-between text-xs text-(--ink)/60">
                 <span>{text.trim().length} characters</span>
-                <button
-                  type="button"
+                <Button
                   onClick={handleClear}
-                  className="text-xs font-medium text-brand hover:opacity-90 disabled:opacity-40"
+                  variant="ghost"
+                  size="sm"
+                  className="text-brand"
                   disabled={loading || (!text && !summary)}
                 >
                   Clear text
-                </button>
+                </Button>
               </div>
             </div>
 
-            {/* Buttons row */}
             <div className="flex flex-wrap gap-2">
-              {/* Summarize (primary) */}
-              <button
-                type="button"
+              <Button
                 onClick={handleSummarize}
                 disabled={!canSubmit}
-                className={[
-                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
-                  "bg-[#9A2839] text-white hover:bg-[#7f2230] focus-visible:ring-[#9A2839]/40",
-                  "disabled:opacity-50 disabled:hover:opacity-50 disabled:cursor-not-allowed",
-                ].join(" ")}
+                loading={activeAction === "summarize"}
+                variant="primary"
               >
-                {activeAction === "summarize" ? (
-                  <>
-                    <Spinner />
-                    Summarizing…
-                  </>
-                ) : (
-                  "Summarize"
-                )}
-              </button>
+                {activeAction === "summarize" ? "Summarizing…" : "Summarize"}
+              </Button>
 
-              {/* Retry */}
-              <button
-                type="button"
+              <Button
                 onClick={handleRetry}
                 disabled={loading || !summary}
-                className={[
-                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
-                  "border border-gray-300 bg-gray-100 text-ink hover:bg-gray-200",
-                  "disabled:opacity-50 disabled:hover:bg-gray-100 disabled:cursor-not-allowed",
-                ].join(" ")}
+                variant="secondary"
               >
                 Retry
-              </button>
+              </Button>
 
-              {/* Save */}
-              <button
-                type="button"
+              <Button
                 onClick={handleConfirmSave}
                 disabled={!summary || loading}
                 title="Save this summary to your account"
-                className={[
-                  "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
-                  "border border-gray-300 bg-white text-ink hover:bg-gray-50",
-                  "disabled:opacity-50 disabled:hover:bg-white disabled:cursor-not-allowed",
-                ].join(" ")}
+                loading={activeAction === "save"}
+                variant="ghost"
               >
-                {activeAction === "save" ? (
-                  <>
-                    <Spinner />
-                    Saving…
-                  </>
-                ) : (
-                  "Save"
-                )}
-              </button>
+                {activeAction === "save" ? "Saving…" : "Save"}
+              </Button>
             </div>
 
             {error && <div className="text-sm text-red-600">{error}</div>}
@@ -294,14 +232,7 @@ export default function SummarizePage() {
                 <h2 className="text-lg font-semibold text-foreground">
                   Summary
                 </h2>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="inline-flex items-center justify-center rounded-md bg-gray-100 px-3 py-1 text-xs font-medium text-ink transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={copied}
-                >
-                  {copied ? "Copied!" : "Copy"}
-                </button>
+                <CopyButton text={summary} size="sm" variant="secondary" />
               </div>
               <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">
                 {summary}
@@ -314,14 +245,15 @@ export default function SummarizePage() {
               <h2 className="text-sm font-semibold text-foreground">
                 Recent (local)
               </h2>
-              <button
-                type="button"
+              <Button
                 onClick={handleClearRecent}
-                className="text-xs font-medium text-brand hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={recentEntries.length === 0}
+                variant="ghost"
+                size="sm"
+                className="text-brand"
+                disabled={loading || recentEntries.length === 0}
               >
-                Clear
-              </button>
+                Clear Recent
+              </Button>
             </div>
 
             {recentEntries.length === 0 ? (
@@ -348,10 +280,7 @@ export default function SummarizePage() {
                           </span>
                         )}
                       </div>
-                      <p
-                        className="mt-2 text-sm text-ink"
-                        title={item.summary}
-                      >
+                      <p className="mt-2 text-sm text-ink" title={item.summary}>
                         {item.summary}
                       </p>
                     </li>

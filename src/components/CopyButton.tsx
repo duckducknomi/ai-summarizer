@@ -1,54 +1,58 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useToast } from "@/components/Toast"; // optional; safe no-op if you remove below usage
+import { Button } from "@/components/Button";
 
-type CopyButtonProps = {
+type Props = {
   text: string;
+  label?: string; // default: "Copy"
+  copiedLabel?: string; // default: "Copied!"
+  size?: "sm" | "md";
+  variant?: "primary" | "secondary" | "ghost";
   className?: string;
-  copiedLabel?: string;
-  copyLabel?: string;
 };
 
-const RESET_DELAY = 1500;
-
-export function CopyButton({
+export default function CopyButton({
   text,
-  className,
+  label = "Copy",
   copiedLabel = "Copied!",
-  copyLabel = "Copy",
-}: CopyButtonProps) {
+  size = "sm",
+  variant = "secondary",
+  className = "",
+}: Props) {
   const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
+  // Optional toast feedback; if you don't mount ToastProvider, remove these 3 lines
+  const toast = (() => {
+    try {
+      const { success, error } = useToast();
+      return { success, error };
+    } catch {
+      return { success: (_: string) => {}, error: (_: string) => {} };
+    }
+  })();
 
-  const handleCopy = useCallback(async () => {
+  async function handleCopy() {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      timeoutRef.current = setTimeout(() => setCopied(false), RESET_DELAY);
-    } catch (error) {
-      console.error("Failed to copy text", error);
+      toast.success?.("Copied to clipboard");
+      setTimeout(() => setCopied(false), 1200);
+    } catch (e: any) {
+      toast.error?.(e?.message ?? "Failed to copy");
     }
-  }, [text]);
+  }
 
   return (
-    <button
-      type="button"
+    <Button
       onClick={handleCopy}
-      className={className}
       disabled={copied}
+      size={size}
+      variant={variant}
+      className={className}
     >
-      {copied ? copiedLabel : copyLabel}
-    </button>
+      {copied ? copiedLabel : label}
+    </Button>
   );
 }

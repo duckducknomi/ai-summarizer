@@ -1,35 +1,39 @@
 // app/history/page.tsx
-import { CopyButton } from "@/components/CopyButton";
-import { prisma } from "@/server/prisma"; // your Prisma singleton
+import CopyButton from "@/components/CopyButton";
+import { prisma } from "@/server/prisma";
 import Link from "next/link";
- // if you don't have this, remove this line + its usage below
 
 export const dynamic = "force-dynamic";
 
-type PageProps = {
-  searchParams?: {
-    q?: string;
-    take?: string;
-    cursor?: string; // id of the last item from previous page
-  };
-};
-
 const TAKE_DEFAULT = 10;
 
-export default async function HistoryPage({ searchParams }: PageProps) {
-  const q = (searchParams?.q ?? "").trim();
+type SearchParams = {
+  q?: string;
+  take?: string;
+  cursor?: string;
+};
+
+export default async function HistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  // ✅ unwrap the Promise
+  const sp = await searchParams;
+
+  // Parse values safely
+  const qRaw = (sp?.q ?? "").toString();
+  const q = qRaw.trim();
+
+  const takeRaw = Number(sp?.take);
   const take = Math.min(
     50,
-    Math.max(
-      1,
-      Number.isFinite(Number(searchParams?.take))
-        ? Number(searchParams?.take)
-        : TAKE_DEFAULT
-    )
+    Math.max(1, Number.isFinite(takeRaw) ? takeRaw : TAKE_DEFAULT)
   );
-  const cursor = searchParams?.cursor || undefined;
 
-  // Build where clause for optional search
+  const cursor = sp?.cursor || undefined;
+
+  // Build where clause
   const where =
     q.length > 0
       ? {
@@ -45,7 +49,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
     where,
     take: take + 1,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    orderBy: { createdAt: "desc" }, // stable enough for this app
+    orderBy: { createdAt: "desc" },
     select: { id: true, originalText: true, summary: true, createdAt: true },
   });
 
@@ -56,16 +60,13 @@ export default async function HistoryPage({ searchParams }: PageProps) {
   return (
     <div className="mx-auto max-w-6xl p-6">
       <header className="mb-4 space-y-1">
-        <h1 className="text-3xl font-bold text-foreground">
-          History
-        </h1>
+        <h1 className="text-3xl font-bold text-foreground">History</h1>
         <p className="text-sm text-(--ink)/70">
           Search and browse summaries saved to the database.
         </p>
       </header>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_420px]">
-        {/* LEFT: search + results */}
         <section className="space-y-4">
           {/* Search */}
           <form
@@ -82,20 +83,23 @@ export default async function HistoryPage({ searchParams }: PageProps) {
               />
               {/* Preserve page size */}
               <input type="hidden" name="take" value={take} />
-              <button
-                className="rounded-lg bg-[#9A2839] px-4 py-2 text-sm font-medium text-white hover:bg-[#7f2230]"
-                type="submit"
-              >
+              <button type="submit" className="btn btn-primary btn-sm">
                 Search
               </button>
+              {q.length > 0 && (
+                <Link
+                  href={{ pathname: "/history", query: { take } }} // omit `q` to reset
+                  className="btn btn-ghost btn-sm"
+                >
+                  Clear
+                </Link>
+              )}
             </div>
           </form>
 
           {/* Results */}
           {results.length === 0 ? (
-            <p className="text-sm text-(--ink)/60">
-              No summaries found.
-            </p>
+            <p className="text-sm text-(--ink)/60">No summaries found.</p>
           ) : (
             <div className="space-y-4">
               {results.map((s) => (
@@ -107,8 +111,11 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                     <time className="text-xs text-(--ink)/60">
                       {new Date(s.createdAt).toLocaleString()}
                     </time>
-                    {/* Remove this <CopyButton> if you didn't add it earlier */}
-                    <CopyButton text={s.summary} />
+                    <CopyButton
+                      text={s.summary}
+                      size="sm"
+                      variant="secondary"
+                    />
                   </div>
 
                   <h3 className="text-sm font-semibold text-foreground">
@@ -121,9 +128,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
                   <h4 className="mt-4 text-sm font-semibold text-foreground">
                     Original
                   </h4>
-                  <p className="mt-1 leading-7 text-ink">
-                    {s.originalText}
-                  </p>
+                  <p className="mt-1 leading-7 text-ink">{s.originalText}</p>
 
                   <div className="mt-3 text-[11px] text-(--ink)/60">
                     id: {s.id}
@@ -137,15 +142,11 @@ export default async function HistoryPage({ searchParams }: PageProps) {
           <div className="flex items-center justify-end">
             {hasNext && nextCursor && (
               <Link
-                className="rounded-lg border px-3 py-1.5 text-sm text-foreground hover:bg-[var(--brand)/10]"
                 href={{
                   pathname: "/history",
-                  query: {
-                    q,
-                    take,
-                    cursor: nextCursor,
-                  },
+                  query: { q, take, cursor: nextCursor },
                 }}
+                className="btn btn-ghost btn-sm"
               >
                 Next →
               </Link>
@@ -156,9 +157,7 @@ export default async function HistoryPage({ searchParams }: PageProps) {
         {/* RIGHT: sticky aside */}
         <aside className="space-y-4 md:sticky md:top-20 h-fit">
           <section className="rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm">
-            <h3 className="font-medium text-foreground">
-              About
-            </h3>
+            <h3 className="font-medium text-foreground">About</h3>
             <p className="mt-1 text-sm text-(--ink)/75">
               This page lists summaries saved to the database. Use the search
               box to filter by content. Click “Next” to fetch more results. Use

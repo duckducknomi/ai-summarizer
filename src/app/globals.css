@@ -28,13 +28,12 @@ body {
 
 /* Links and inline text elements */
 a {
-  color: var(--brand);
+
   text-decoration: none;
   transition: color 0.15s ease;
 }
 a:hover {
   text-decoration: underline;
-  color: color-mix(in srgb, var(--brand) 90%, black);
 }
 
 /* ===== INTERACTION & ACCESSIBILITY ===== */
@@ -80,27 +79,39 @@ input::placeholder {
   color: color-mix(in srgb, var(--ink) 50%, white);
 }
 
-/* Buttons — neutral and primary */
-button {
+.btn {
   cursor: pointer;
   font-weight: 500;
-  border-radius: 0.75rem;
-  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  border-radius: 0.5rem;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
 }
+.btn:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 40%, transparent);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-button.primary {
+.btn-md { padding: 0.5rem 1rem; font-size: 0.875rem; }       /* ~text-sm */
+.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.875rem; }  /* compact */
+
+/* Variants */
+.btn-primary {
   background: var(--brand);
-  color: white;
+  color: #fff;
 }
-button.primary:hover {
-  opacity: 0.9;
-}
+.btn-primary:hover { background: color-mix(in srgb, var(--brand) 85%, black); }
 
-/* Optional dark mode placeholder (not active yet)
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0C312B;
-    --foreground: #E6F9F6;
-  }
+.btn-secondary {
+  background: #f3f4f6; /* gray-100 */
+  border-color: #d1d5db; /* gray-300 */
+  color: var(--ink);
 }
-*/
+.btn-secondary:hover { background: #e5e7eb; } /* gray-200 */
+
+.btn-ghost {
+  background: #fff;
+  border-color: #d1d5db; /* gray-300 */
+  color: var(--ink);
+}
+.btn-ghost:hover { background: #f9fafb; } /* gray-50 */
