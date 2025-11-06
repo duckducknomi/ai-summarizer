@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import {
   add,
@@ -13,10 +13,11 @@ import { useAutosizeTextArea } from "@/lib/useAutosize";
 import { Button } from "@/components/Button";
 import CopyButton from "@/components/CopyButton";
 
-
 type ApiOk = { summary: string };
 type ApiErr = { error?: { code?: string; message?: string } };
 type SaveOk = { id: string; createdAt: string };
+
+const MIN_LEN = 20;
 
 export default function SummarizePage() {
   const [text, setText] = useState("");
@@ -27,33 +28,47 @@ export default function SummarizePage() {
   const [activeAction, setActiveAction] = useState<"summarize" | "save" | null>(
     null
   );
+  /** Prevent duplicate saves of the same summary */
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const lastCreatedAtRef = useRef<string | null>(null);
   const lastSummarizedTextRef = useRef<string | null>(null);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
   const { success, error: toastError } = useToast();
 
-  const minLen = 20;
+  // Enable Summarize only if: not loading, long enough, AND text changed since last summarize
   const canSubmit =
     !loading &&
-    text.trim().length >= minLen &&
+    text.trim().length >= MIN_LEN &&
     text !== lastSummarizedTextRef.current;
 
+  // Load recent local history 
   useEffect(() => {
     setRecent(load());
-    return () => {
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-    };
   }, []);
 
   useAutosizeTextArea(textareaRef.current, text);
+
+  const recentEntries = useMemo(() => recent.slice(0, 3), [recent]);
+
+  // Map API error payloads to friendly messages
+  const messageFromApiError = (status: number, payload?: ApiErr) => {
+    const msg = payload?.error?.message;
+    if (status === 429)
+      return msg || "Too many requests. Please try again shortly.";
+    if (status === 413) return msg || "Your input is too long.";
+    if (status >= 500)
+      return "Service is temporarily unavailable. Please retry.";
+    return msg || "Unexpected error";
+  };
 
   const handleSummarize = useCallback(async () => {
     setLoading(true);
     setActiveAction("summarize");
     setError(null);
     setSummary(null);
+    setSavedId(null); // new run -> allow saving again when we get a fresh summary
 
     try {
       const res = await fetch("/api/summarize", {
@@ -61,30 +76,35 @@ export default function SummarizePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data: ApiOk & ApiErr = await res.json();
-      if (!res.ok)
-        throw new Error(data?.error?.message || "Failed to summarize");
 
-      const summaryText = (data as ApiOk).summary;
+      const data: unknown = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const friendly = messageFromApiError(res.status, data as ApiErr);
+        throw new Error(friendly);
+      }
+
+      const summaryText = (data as ApiOk).summary ?? "";
       const createdAt = new Date().toISOString();
 
       setSummary(summaryText);
+      setSavedId(null); // fresh summary -> not saved yet
       add({ originalText: text, summary: summaryText, createdAt });
       lastCreatedAtRef.current = createdAt;
       lastSummarizedTextRef.current = text;
       setRecent(load());
-    } catch (e: any) {
-      const message = e?.message ?? "Unexpected error";
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unexpected error";
       setError(message);
       toastError(message);
     } finally {
       setLoading(false);
       setActiveAction(null);
     }
-  }, [text]);
+  }, [text, toastError]);
 
   const handleRetry = useCallback(() => {
-
+    setSavedId(null); // retry means we'll produce a new summary
     void handleSummarize();
   }, [handleSummarize]);
 
@@ -100,17 +120,14 @@ export default function SummarizePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ originalText: text, summary }),
       });
+
       const payload: (ApiErr & Partial<SaveOk>) | undefined = await res
         .json()
         .catch(() => undefined);
+
       if (!res.ok) {
-        throw new Error(
-          payload?.error?.message ||
-            (typeof (payload as any)?.message === "string"
-              ? (payload as any).message
-              : "") ||
-            "Failed to save summary"
-        );
+        const friendly = messageFromApiError(res.status, payload);
+        throw new Error(friendly);
       }
 
       const { id } = (payload ?? {}) as SaveOk;
@@ -118,21 +135,23 @@ export default function SummarizePage() {
         attachId(lastCreatedAtRef.current, id);
         setRecent(load());
       }
+      if (id) setSavedId(id); // lock the Save button for this summary
       success("Summary saved!");
-    } catch (e: any) {
-      const message = e?.message ?? "Failed to save summary";
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to save summary";
       setError(message);
       toastError(message);
     } finally {
       setLoading(false);
       setActiveAction(null);
     }
-  }, [summary, text]);
+  }, [summary, text, success, toastError]);
 
   const handleClear = useCallback(() => {
     setText("");
     setSummary(null);
     setError(null);
+    setSavedId(null);
     lastCreatedAtRef.current = null;
     lastSummarizedTextRef.current = null;
   }, []);
@@ -142,8 +161,6 @@ export default function SummarizePage() {
     setRecent([]);
     lastCreatedAtRef.current = null;
   }, []);
-
-  const recentEntries = recent.slice(0, 3);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -211,12 +228,16 @@ export default function SummarizePage() {
 
               <Button
                 onClick={handleConfirmSave}
-                disabled={!summary || loading}
+                disabled={!summary || loading || !!savedId}
                 title="Save this summary to your account"
                 loading={activeAction === "save"}
                 variant="ghost"
               >
-                {activeAction === "save" ? "Saving…" : "Save"}
+                {savedId
+                  ? "Saved"
+                  : activeAction === "save"
+                  ? "Saving…"
+                  : "Save"}
               </Button>
             </div>
 

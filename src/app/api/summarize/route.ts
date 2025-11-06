@@ -7,6 +7,9 @@ const Body = z.object({
   text: z.string().min(20, "Text must be at least 20 characters"),
 });
 
+// POST /api/summarize
+// Accepts { text: string }
+// Returns { summary: string } or { error: { code, message } }
 export async function POST(req: NextRequest) {
   const json = await req.json().catch(() => ({}));
   const parsed = Body.safeParse(json);
@@ -21,7 +24,6 @@ export async function POST(req: NextRequest) {
   const { text } = parsed.data;
   const summary = await summarizeText(text);
 
-  // Keep the shape simple; we can extend later without breaking clients.
   return NextResponse.json({ summary });
 }
 

@@ -19,4 +19,6 @@ model Summary {
   originalText String
   summary      String
   createdAt    DateTime @default(now())
+  // Improve sorting and pagination speed on /history
+  @@index([createdAt], map: "idx_summary_createdAt")
 }

@@ -1,5 +1,6 @@
-// app/history/page.tsx
+import { Button } from "@/components/Button";
 import CopyButton from "@/components/CopyButton";
+import { Summary } from "@/generated/prisma/client";
 import { prisma } from "@/server/prisma";
 import Link from "next/link";
 
@@ -18,10 +19,10 @@ export default async function HistoryPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  // ✅ unwrap the Promise
+  // unwrap 
   const sp = await searchParams;
 
-  // Parse values safely
+  // parse
   const qRaw = (sp?.q ?? "").toString();
   const q = qRaw.trim();
 
@@ -83,9 +84,9 @@ export default async function HistoryPage({
               />
               {/* Preserve page size */}
               <input type="hidden" name="take" value={take} />
-              <button type="submit" className="btn btn-primary btn-sm">
+              <Button type="submit" variant="primary" className="btn-sm">
                 Search
-              </button>
+              </Button>
               {q.length > 0 && (
                 <Link
                   href={{ pathname: "/history", query: { take } }} // omit `q` to reset
@@ -102,7 +103,7 @@ export default async function HistoryPage({
             <p className="text-sm text-(--ink)/60">No summaries found.</p>
           ) : (
             <div className="space-y-4">
-              {results.map((s) => (
+              {results.map((s: Summary) => (
                 <article
                   key={s.id}
                   className="rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm"

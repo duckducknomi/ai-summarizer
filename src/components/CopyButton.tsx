@@ -23,7 +23,6 @@ export default function CopyButton({
 }: Props) {
   const [copied, setCopied] = useState(false);
 
-  // Optional toast feedback; if you don't mount ToastProvider, remove these 3 lines
   const toast = (() => {
     try {
       const { success, error } = useToast();
@@ -39,8 +38,8 @@ export default function CopyButton({
       setCopied(true);
       toast.success?.("Copied to clipboard");
       setTimeout(() => setCopied(false), 1200);
-    } catch (e: any) {
-      toast.error?.(e?.message ?? "Failed to copy");
+    } catch (e: unknown) {
+      toast.error?.(e instanceof Error ? e.message : "Failed to copy");
     }
   }
 

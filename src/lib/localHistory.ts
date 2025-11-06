@@ -23,6 +23,7 @@ function write(items: LocalSummary[]) {
 }
 
 export function load(): LocalSummary[] {
+  if (typeof window === "undefined") return [];
   return read();
 }
 

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(record, { status: 201 });
   } catch (error) {
-    console.error("[save-summary] error", error);
+    console.error("[API/save-summary] Failed to persist summary:", error);
     return NextResponse.json(
       { error: { code: "INTERNAL_ERROR", message: "Failed to save summary" } },
       { status: 500 }
