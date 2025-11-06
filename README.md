@@ -80,9 +80,6 @@ model Summary {
   originalText String
   summary      String
   createdAt    DateTime @default(now())
-
-  // Index for faster sorting and pagination
-  @@index([createdAt], map: "idx_summary_createdAt")
 }
 ```
 

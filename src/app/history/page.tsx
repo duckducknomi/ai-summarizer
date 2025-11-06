@@ -1,40 +1,34 @@
-import { Button } from "@/components/Button";
-import CopyButton from "@/components/CopyButton";
-import { Summary } from "@/generated/prisma/client";
 import { prisma } from "@/server/prisma";
 import Link from "next/link";
+import CopyButton from "@/components/CopyButton";
+import { Button } from "@/components/Button";
+import { Summary } from "@/generated/prisma/client";
+
 
 export const dynamic = "force-dynamic";
-
-const TAKE_DEFAULT = 10;
-
-type SearchParams = {
-  q?: string;
-  take?: string;
-  cursor?: string;
-};
 
 export default async function HistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  searchParams: Promise<{
+    q?: string;
+    take?: string;
+    cursor?: string;
+    direction?: "next" | "prev";
+  }>;
 }) {
-  // unwrap 
   const sp = await searchParams;
 
-  // parse
-  const qRaw = (sp?.q ?? "").toString();
-  const q = qRaw.trim();
-
-  const takeRaw = Number(sp?.take);
-  const take = Math.min(
-    50,
-    Math.max(1, Number.isFinite(takeRaw) ? takeRaw : TAKE_DEFAULT)
-  );
+  const q = (sp?.q ?? "").trim();
+  const takeParam = Number(sp?.take);
+  const take = Number.isFinite(takeParam)
+    ? Math.max(1, Math.min(50, takeParam))
+    : 10;
 
   const cursor = sp?.cursor || undefined;
+  const direction = (sp?.direction as "next" | "prev" | undefined) ?? "next";
 
-  // Build where clause
+  // Optional search
   const where =
     q.length > 0
       ? {
@@ -45,18 +39,34 @@ export default async function HistoryPage({
         }
       : undefined;
 
-  // Fetch one extra to detect "hasNext"
-  let results = await prisma.summary.findMany({
+  // When going "prev", we fetch ascending (older -> newer), then reverse
+  const orderBy =
+    direction === "prev"
+      ? { createdAt: "asc" as const }
+      : { createdAt: "desc" as const };
+
+  // Fetch one extra to know if there's a next page in that direction
+  let results: Summary[] = await prisma.summary.findMany({
     where,
     take: take + 1,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    orderBy: { createdAt: "desc" },
+    orderBy,
     select: { id: true, originalText: true, summary: true, createdAt: true },
   });
 
+  // If  fetched in ascending for "prev", reverse to display newest → oldest
+  if (direction === "prev") {
+    results = results.reverse();
+  }
+
   const hasNext = results.length > take;
   if (hasNext) results = results.slice(0, take);
-  const nextCursor = hasNext ? results[results.length - 1]?.id : undefined;
+
+  const firstId = results[0]?.id;
+  const lastId = results[results.length - 1]?.id;
+  const nextCursor = hasNext ? lastId : undefined;
+
+  const showPrev = Boolean(cursor && firstId);
 
   return (
     <div className="mx-auto max-w-6xl p-6">
@@ -68,6 +78,7 @@ export default async function HistoryPage({
       </header>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_420px]">
+        {/* LEFT: search + results */}
         <section className="space-y-4">
           {/* Search */}
           <form
@@ -82,17 +93,17 @@ export default async function HistoryPage({
                 placeholder="Search summaries…"
                 className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-ink"
               />
-              {/* Preserve page size */}
+              {/* Preserve page size; reset cursor/direction on new searches */}
               <input type="hidden" name="take" value={take} />
-              <Button type="submit" variant="primary" className="btn-sm">
+              <Button type="submit" variant="primary">
                 Search
               </Button>
-              {q.length > 0 && (
+              {q && (
                 <Link
-                  href={{ pathname: "/history", query: { take } }} // omit `q` to reset
-                  className="btn btn-ghost btn-sm"
+                  href={{ pathname: "/history", query: { take } }}
+                  className="text-sm text-brand hover:opacity-90"
                 >
-                  Clear
+                  Clear search
                 </Link>
               )}
             </div>
@@ -103,7 +114,7 @@ export default async function HistoryPage({
             <p className="text-sm text-(--ink)/60">No summaries found.</p>
           ) : (
             <div className="space-y-4">
-              {results.map((s: Summary) => (
+              {results.map((s) => (
                 <article
                   key={s.id}
                   className="rounded-2xl border border-[var(--brand)/15] bg-white p-6 shadow-sm"
@@ -139,18 +150,46 @@ export default async function HistoryPage({
             </div>
           )}
 
-          {/* Pagination (Next) */}
-          <div className="flex items-center justify-end">
-            {hasNext && nextCursor && (
+          {/* Pagination (Prev / Next) */}
+          <div className="mt-2 flex items-center justify-between">
+            {/* Prev: show when we navigated via cursor (we're not at the very beginning) */}
+            {showPrev ? (
               <Link
+                className="rounded-lg border px-3 py-1.5 text-sm text-foreground hover:bg-[var(--brand)/10]"
                 href={{
                   pathname: "/history",
-                  query: { q, take, cursor: nextCursor },
+                  query: {
+                    q,
+                    take,
+                    cursor: firstId, // navigate back using the first visible item
+                    direction: "prev",
+                  },
                 }}
-                className="btn btn-ghost btn-sm"
+              >
+                ← Prev
+              </Link>
+            ) : (
+              <span />
+            )}
+
+            {/* Next */}
+            {hasNext && nextCursor ? (
+              <Link
+                className="rounded-lg border px-3 py-1.5 text-sm text-foreground hover:bg-[var(--brand)/10]"
+                href={{
+                  pathname: "/history",
+                  query: {
+                    q,
+                    take,
+                    cursor: nextCursor,
+                    direction: "next",
+                  },
+                }}
               >
                 Next →
               </Link>
+            ) : (
+              <span />
             )}
           </div>
         </section>
@@ -161,8 +200,8 @@ export default async function HistoryPage({
             <h3 className="font-medium text-foreground">About</h3>
             <p className="mt-1 text-sm text-(--ink)/75">
               This page lists summaries saved to the database. Use the search
-              box to filter by content. Click “Next” to fetch more results. Use
-              the Copy button to quickly copy any summary.
+              box to filter by content. Use Prev / Next to paginate between
+              result pages. Click the Copy button to quickly copy any summary.
             </p>
           </section>
         </aside>
